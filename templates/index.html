@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Minecraft AI Clipper</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="wrap">
+    <div class="brand">⛏️ MINECRAFT AI CLIPPER</div>
+    <h1>Turn a long video into <span>4 Shorts.</span></h1>
+    <p class="sub">Paste a video link. The app finds four moments, crops them vertically, and adds captions.</p>
+    <section class="panel">
+      <label for="url">YouTube video link</label>
+      <div class="inputrow">
+        <input id="url" type="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="url">
+        <button id="go">Make 4 clips</button>
+      </div>
+      <p class="fine">Only use videos you own or have permission to clip. Processing can take a while.</p>
+      <div id="statusbox" class="status hidden">
+        <div class="statusline"><strong id="statusmsg">Starting…</strong><span id="percent">0%</span></div>
+        <div class="bar"><div id="fill"></div></div>
+        <div id="clips" class="clips"></div>
+      </div>
+      <p id="error" class="error hidden"></p>
+    </section>
+    <section class="features">
+      <div><b>4 highlights</b><small>Finds energetic moments from the transcript.</small></div>
+      <div><b>9:16 vertical</b><small>Formatted for YouTube Shorts.</small></div>
+      <div><b>Captions included</b><small>Burned into each video. No watermark.</small></div>
+    </section>
+    <p class="disclaimer">This is an open-source starter app. It uses server CPU to process videos; hosting may not be free or unlimited. YouTube may restrict downloading or reuse. Respect the creator's permissions and platform rules.</p>
+  </main>
+<script>
+const go = document.getElementById('go'), url = document.getElementById('url');
+const box = document.getElementById('statusbox'), msg = document.getElementById('statusmsg');
+const percent = document.getElementById('percent'), fill = document.getElementById('fill');
+const clips = document.getElementById('clips'), error = document.getElementById('error');
+let poller = null;
+go.addEventListener('click', async () => {
+  error.classList.add('hidden'); clips.innerHTML = '';
+  const link = url.value.trim();
+  if (!link) { error.textContent = 'Paste a video link first.'; error.classList.remove('hidden'); return; }
+  go.disabled = true; go.textContent = 'Starting…'; box.classList.remove('hidden');
+  try {
+    const r = await fetch('/api/clip', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:link})});
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'Could not start the job.');
+    poller = setInterval(() => poll(data.job_id), 2500); await poll(data.job_id);
+  } catch(e) { error.textContent = e.message; error.classList.remove('hidden'); go.disabled = false; go.textContent = 'Make 4 clips'; }
+});
+async function poll(id) {
+  try {
+    const r = await fetch('/api/status/' + id), d = await r.json();
+    msg.textContent = d.message || d.status; percent.textContent = (d.progress || 0) + '%'; fill.style.width = (d.progress || 0) + '%';
+    if (d.status === 'done') {
+      clearInterval(poller);
+      clips.innerHTML = '<h3>Your clips</h3>' + d.clips.map(c => `<a class="download" href="/download/${id}/${c.filename}">⬇ Download clip ${c.number} (${c.start}s–${c.end}s)</a>`).join('');
+      go.disabled = false; go.textContent = 'Make 4 more clips';
+    } else if (d.status === 'error') {
+      clearInterval(poller); error.textContent = d.message; error.classList.remove('hidden'); go.disabled = false; go.textContent = 'Try again';
+    }
+  } catch(e) { clearInterval(poller); error.textContent = 'Lost connection to the server.'; error.classList.remove('hidden'); go.disabled = false; go.textContent = 'Try again'; }
+}
+</script>
+</body>
+</html>
